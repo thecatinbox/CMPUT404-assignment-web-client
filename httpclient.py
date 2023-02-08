@@ -33,7 +33,17 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self, url):
+        # print("-- URL --", url)
+        if ":" in url.netloc: 
+            # For IP-based virtual hosting
+            host = url.netloc.split(":")[0]
+            port = url.netloc.split(":")[1]
+        else: 
+            # For name-based virtual hosting
+            host = url.hostname 
+            port = 80 
+        return host, int(port) 
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,13 +51,16 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        header = self.get_headers(data)
+        # print("-- Header --", header)
+        return int(header.split(' ')[1])
 
-    def get_headers(self,data):
-        return None
+    def get_headers(self, data):
+        return data.split("\r\n\r\n")[0]
 
     def get_body(self, data):
-        return None
+        # print("-- Data --", data)
+        return data.split("\r\n\r\n")[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -70,11 +83,86 @@ class HTTPClient(object):
     def GET(self, url, args=None):
         code = 500
         body = ""
+        
+        # Parse URL information 
+        url_info = urllib.parse.urlparse(url)
+        # print(url_info) 
+
+        # Connect to host with port number 
+        host, port = self.get_host_port(url_info)
+        self.connect(host, port)
+
+        # Format the GET request 
+        if url_info.path: 
+            request = "GET " + url_info.path + " HTTP/1.1\r\n" 
+        else: 
+            request = "GET /" + " HTTP/1.1\r\n" 
+        request += "Host: " + url_info.netloc + "\r\n"
+        request += "Connection: close" + "\r\n\r\n"
+
+        # Send request to the socket 
+        print("Reqeust:", request)
+        self.sendall(request)
+
+        # Get returned response and print to stdout
+        response =  self.recvall(self.socket)
+        print("Response:", response)
+
+        # Pharse response into code and body
+        code = self.get_code(response)
+        body = self.get_body(response)
+        
+        # Close socket 
+        self.close()
+        
+        # Returned result as a HTTPResponse object
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
+        
+        # Parse URL information 
+        url_info = urllib.parse.urlparse(url)
+        # print(url_info) 
+
+        # Connect to host with port number 
+        host, port = self.get_host_port(url_info)
+        self.connect(host, port)
+
+        # Convers args into query strings 
+        if args:
+            content = urllib.parse.urlencode(args)
+        else:
+            content = ""
+
+        # Format the POST request 
+        if url_info.path: 
+            request = "POST " + url_info.path + " HTTP/1.1\r\n" 
+        else: 
+            request = "POST /" + " HTTP/1.1\r\n" 
+        request += "Host: " + url_info.netloc + "\r\n"
+        request += "Content-Length: " + str(len(content)) + "\r\n"
+        request += "Content-Type: application/x-www-form-urlencoded" + "\r\n"
+        request += "Connection: close" + "\r\n\r\n"
+        request += content
+
+        # Send request to the socket 
+        print("Reqeust:", request)
+        self.sendall(request)
+
+        # Get returned response and print to stdout
+        response =  self.recvall(self.socket)
+        print("Response:", response)
+
+        # Pharse response into code and body
+        code = self.get_code(response)
+        body = self.get_body(response)
+        
+        # Close socket 
+        self.close()
+        
+        # Returned result as a HTTPResponse object
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
